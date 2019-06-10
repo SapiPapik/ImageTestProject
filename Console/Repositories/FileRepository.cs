@@ -5,12 +5,10 @@ using System.Drawing.Imaging;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using TestProject.Contracts;
-using TestProject.Models;
 
 namespace TestProject.Repositories
 {
-    public class FileRepository : IBaseFileRepository
+    public class FileRepository
     {
         public void SaveFile(string directory, Bitmap file)
         {
@@ -28,18 +26,6 @@ namespace TestProject.Repositories
                 System.Console.WriteLine(e);
                 throw;
             }
-        }
-
-        public ImageColumn GetColumn(string path, ICollection<string> names)
-        {
-            var result = new ImageColumn();
-            foreach (var name in names)
-            {
-                var image = LoadFile(path + "/" + name);
-                result.Rows.Add(new ImageRow { Image = image });
-            }
-
-            return result;
         }
     }
 }
