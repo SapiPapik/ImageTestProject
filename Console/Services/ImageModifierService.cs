@@ -6,13 +6,12 @@ using System.Drawing.Imaging;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using TestProject.Contracts;
-using TestProject.Models;
+using Console.Models;
 using TestProject.Repositories;
 
 namespace TestProject.Services
 {
-    public class ImageModifierService : IImageModiferService
+    public class ImageModifierService
     {
         private readonly FileRepository _fileRepository;
 
@@ -21,53 +20,54 @@ namespace TestProject.Services
             _fileRepository = fileRepository;
         }
 
-        public void DrawStoryboard(ImageRow row, int width)
+        public void Test<T, U>(T row, int width) where T : BaseModelContent<U> where U : BaseModelContent<T>
         {
-            
+            var bitmap = Test<T, U>(row);
+            var averageHeight = Round((double)bitmap.Height * width / bitmap.Width);
+            bitmap = ResizeImage(bitmap, width, averageHeight);
+            _fileRepository.SaveFile("C:\\Users\\Sapik\\Desktop\\result.png", bitmap);
         }
 
-        public void DrawStoryboard(ImageColumn column, int width)
+        private Bitmap Test<T, U>(T row) where T : BaseModelContent<U> where U : BaseModelContent<T>
         {
-            var averageHeight = Round((double)column.Rows.Sum(c => c.Image.Height) / column.Rows.Count);
-
-            foreach (var columnRow in column.Rows)
+            if (row.Child != null)
             {
-                if (columnRow?.Image == null) throw new ArgumentException(nameof(columnRow));
-
-                var averageWidth = Round((double)columnRow.Image.Width * averageHeight / columnRow.Image.Height);
-                columnRow.Image = ResizeImage(columnRow.Image, averageWidth, averageHeight);
+                var bitmap = Test<U, T>(row.Child);
+                row.Content.Insert(row.ChildPosition, bitmap);
+                return DrawStoryboard<T, U>(row.Content);
             }
 
-            var currentWidth = column.Rows.Sum(r => r.Image.Width);
-            var widthDifference = currentWidth - width;
-            if (widthDifference != 0)
-            {
-                if (widthDifference > 0)
-                {
-                    var smoothingFactor = 1 - Math.Abs((double)widthDifference) / currentWidth;
-                    foreach (var columnRow in column.Rows)
-                    {
-                        columnRow.Image = ResizeImage(columnRow.Image, 
-                            Round(columnRow.Image.Width * smoothingFactor),
-                            Round(columnRow.Image.Height * smoothingFactor));
-                    }
-                }
-                else
-                {
-                    var smoothingFactor = Math.Abs((double)widthDifference) / currentWidth;
-                    foreach (var columnRow in column.Rows)
-                    {
-                        columnRow.Image = ResizeImage(columnRow.Image,
-                            Round(columnRow.Image.Width + columnRow.Image.Width * smoothingFactor),
-                            Round(columnRow.Image.Height + columnRow.Image.Height * smoothingFactor));
-                    }
-                }
-            }
-
-            var result = MergedBitmaps(column.Rows.Select(r => r.Image).ToList());
-
-            _fileRepository.SaveFile("C:\\Users\\Sapik\\Desktop\\result.png", result);
+            return DrawStoryboard<T, U>(row.Content);
         }
+
+        public Bitmap DrawStoryboard<T, U>(ICollection<Bitmap> bitmaps) where T : BaseModelContent<U> where U : BaseModelContent<T>
+        {
+            int average;
+            var result = new List<Bitmap>();
+            if (typeof(T) == typeof(Row))
+            {
+                average = Round((double)bitmaps.Sum(c => c.Height) / bitmaps.Count);
+                foreach (var bitmap in bitmaps)
+                {
+                    var averageWidth = Round((double)bitmap.Width * average / bitmap.Height);
+                    result.Add(ResizeImage(bitmap, averageWidth, average));
+                }
+
+                return MergedBitmaps(result, typeof(T) == typeof(Row) ? TypeOfContent.Row : TypeOfContent.Column);
+            }
+            else
+            {
+                average = Round((double)bitmaps.Sum(c => c.Width) / bitmaps.Count);
+                foreach (var bitmap in bitmaps)
+                {
+                    var averageHeight = Round((double)bitmap.Height * average / bitmap.Width);
+                    result.Add(ResizeImage(bitmap, average, averageHeight));
+                }
+
+                return MergedBitmaps(result, typeof(T) == typeof(Row) ? TypeOfContent.Row : TypeOfContent.Column);
+            }
+        }
+
 
         private Bitmap ResizeImage(Bitmap image, int width, int height)
         {
@@ -101,17 +101,33 @@ namespace TestProject.Services
             return destImage;
         }
 
-        private Bitmap MergedBitmaps(ICollection<Bitmap> bitmaps)
+        private Bitmap MergedBitmaps(ICollection<Bitmap> bitmaps, TypeOfContent typeOfContent)
         {
-            Bitmap result = new Bitmap(bitmaps.Sum(b => b.Width),
-                bitmaps.Max(b => b.Height));
+            Bitmap result;
+            if (typeOfContent == TypeOfContent.Row)
+            {
+                result = new Bitmap(bitmaps.Sum(b => b.Width),
+                    bitmaps.Max(b => b.Height));
+            }
+            else
+            {
+                result = new Bitmap(bitmaps.Max(b => b.Width),
+                    bitmaps.Sum(b => b.Height));
+            }
             using (Graphics graphics = Graphics.FromImage(result))
             {
-                Point temp = new Point(0,0);
+                Point temp = new Point(0, 0);
                 foreach (var bitmap in bitmaps)
                 {
                     graphics.DrawImage(bitmap, temp);
-                    temp.X += bitmap.Width;
+                    if (typeOfContent == TypeOfContent.Column)
+                    {
+                        temp.Y += bitmap.Height;
+                    }
+                    else
+                    {
+                        temp.X += bitmap.Width;
+                    }
                 }
             }
             return result;
@@ -121,5 +137,11 @@ namespace TestProject.Services
         {
             return Convert.ToInt32(Math.Round(value, MidpointRounding.AwayFromZero));
         }
+    }
+
+    public enum TypeOfContent
+    {
+        Column,
+        Row
     }
 }
